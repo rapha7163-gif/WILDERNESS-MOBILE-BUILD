@@ -1,0 +1,79 @@
+
+name: Build WILDERNESS MOBILE APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'WILDERNESS_MOBILE_Android_preparado.zip'
+      - '.github/workflows/android.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    container:
+      image: barichello/godot-ci:4.4.1
+
+    env:
+      HOME: /root
+      ANDROID_HOME: /usr/lib/android-sdk
+      ANDROID_SDK_ROOT: /usr/lib/android-sdk
+      JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+      PATH: /usr/lib/jvm/java-17-openjdk-amd64/bin:/usr/lib/android-sdk/platform-tools:/usr/lib/android-sdk/cmdline-tools/cmdline-tools/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+    steps:
+      - name: Baixar arquivos
+        uses: actions/checkout@v4
+
+      - name: Conferir ambiente
+        run: |
+          godot --version
+          java -version
+          test -f /root/debug.keystore
+          test -f /root/.local/share/godot/export_templates/4.4.1.stable/android_debug.apk
+          test -f /root/.local/share/godot/export_templates/4.4.1.stable/android_release.apk
+          test -f /usr/lib/android-sdk/platform-tools/adb
+
+      - name: Extrair projeto
+        run: |
+          mkdir -p source
+          unzip -q WILDERNESS_MOBILE_Android_preparado.zip -d source
+
+          PROJECT_FILE=$(find source -type f -name project.godot -print -quit)
+
+          if [ -z "$PROJECT_FILE" ]; then
+            echo "ERRO: project.godot não encontrado no ZIP."
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$PROJECT_FILE")
+
+          if [ ! -f "$PROJECT_DIR/export_presets.cfg" ]; then
+            echo "ERRO: export_presets.cfg não encontrado."
+            exit 1
+          fi
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - name: Importar projeto
+        run: |
+          godot --headless --editor --path "$PROJECT_DIR" --quit
+
+      - name: Compilar APK
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/build"
+
+          godot --headless --path "$PROJECT_DIR" \
+            --export-debug "Android" \
+            "$GITHUB_WORKSPACE/build/WILDERNESS_MOBILE.apk"
+
+          test -s "$GITHUB_WORKSPACE/build/WILDERNESS_MOBILE.apk"
+
+      - name: Disponibilizar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: WILDERNESS-MOBILE-APK
+          path: build/WILDERNESS_MOBILE.apk
+          if-no-files-found: error
+          
